@@ -40,3 +40,81 @@
       padding: 8px 14px; border-radius: 6px; border: 1px solid #ccc;
       background: #007bff; color: #fff; font-weight: 600; cursor: pointer;
     }
+    .status { font-size: 12px; color:#555; }
+    .hint { font-size: 12px; color:#888; margin-left:auto; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="left" id="left">
+      <div id="canvas-wrap"></div>
+    </div>
+    <div class="resizer" id="resizer"></div>
+    <div class="right">
+      <div class="pane-title">右：コードエディタ（上＝setup() の中身／下＝draw() の中身）</div>
+      <div class="editors">
+        <div class="editor">
+          <header>setup() の中身</header>
+          <textarea id="setup-editor" spellcheck="false">
+p.createCanvas(p.windowWidth/2, p.windowHeight);
+p.background(255);
+p.noStroke();
+          </textarea>
+        </div>
+        <div class="editor">
+          <header>draw() の中身</header>
+          <textarea id="draw-editor" spellcheck="false">
+p.background(255);
+p.fill(0, 150, 255);
+p.circle(p.mouseX, p.mouseY, 80);
+          </textarea>
+        </div>
+      </div>
+      <div class="run-bar">
+        <button id="run-btn">実行</button>
+        <div class="status" id="status">待機中</div>
+        <div class="hint">右側を編集 → 実行ボタン</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // リサイズバー
+    const resizer = document.getElementById("resizer");
+    const left = document.getElementById("left");
+    let dragging = false;
+    resizer.addEventListener("mousedown", () => dragging = true);
+    window.addEventListener("mousemove", (e) => {
+      if (!dragging) return;
+      const w = Math.min(Math.max(e.clientX, 200), window.innerWidth - 280);
+      document.documentElement.style.setProperty("--leftWidth", w + "px");
+    });
+    window.addEventListener("mouseup", () => dragging = false);
+
+    // 実行処理
+    let currentP5;
+    function runSketch() {
+      const setupCode = document.getElementById("setup-editor").value;
+      const drawCode = document.getElementById("draw-editor").value;
+      if (currentP5) currentP5.remove();
+
+      const sketch = (p) => {
+        p.setup = function() {
+          try { eval(setupCode); } 
+          catch (e) { document.getElementById("status").textContent = "setup エラー: " + e.message; }
+        };
+        p.draw = function() {
+          try { eval(drawCode); } 
+          catch (e) { document.getElementById("status").textContent = "draw エラー: " + e.message; p.noLoop(); }
+        };
+      };
+
+      currentP5 = new p5(sketch, document.getElementById("canvas-wrap"));
+      document.getElementById("status").textContent = "実行中";
+    }
+
+    document.getElementById("run-btn").addEventListener("click", runSketch);
+    runSketch();
+  </script>
+</body>
+</html>
