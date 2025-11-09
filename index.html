@@ -2,15 +2,14 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>p5.js Live Editor (Globals + Cmd/Ctrl+Enter 専用・Light Mode)</title>
+  <title>p5.js Live Editor (Scrollbars + Cmd/Ctrl+Enter 専用)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- p5.js -->
   <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
-  <!-- CodeMirror -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.css">
   <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/javascript/javascript.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/edit/closebrackets.js"></script>
+
   <style>
     :root { --leftWidth: 50vw; --topRatioGlobals: 0.22; --topRatioEditors: 0.5; }
     * { box-sizing: border-box; }
@@ -26,7 +25,6 @@
 
     .pane-title { padding: 8px 12px; font-size: 13px; color: #555; background:#f0f0f0; border-bottom:1px solid #ddd; }
 
-    /* 右ペインは上段=グローバル、下段=setup/draw スタック */
     .right-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
     .globals-pane { flex: 0 0 calc(var(--topRatioGlobals) * 100%); min-height: 90px; display: flex; flex-direction: column; padding: 8px; gap: 6px; }
     .row-resizer-G { height: 6px; background: #eee; border-top: 1px solid #ddd; border-bottom: 1px solid #ddd; cursor: row-resize; }
@@ -40,8 +38,18 @@
     .editor { flex: 1; display: flex; flex-direction: column; background:#fff; border:1px solid #ccc; border-radius: 8px; overflow: hidden; }
     .editor header { font-size: 12px; padding: 6px 8px; color:#0366d6; background:#f8f8f8; border-bottom:1px solid #ddd; }
 
-    .cm-host { flex: 1; }
-    .CodeMirror { height: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 13px; line-height: 1.5; }
+    .cm-host { flex: 1; overflow: auto; }
+    .CodeMirror {
+      height: 100%;
+      width: 100%;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      overflow: auto !important;
+    }
+    .CodeMirror-scroll {
+      overflow: scroll !important;
+    }
 
     .statusbar { padding: 6px 12px; border-top:1px solid #ddd; font-size:12px; color:#555; background:#f9f9f9; }
     .errors { padding: 6px 12px; color:#b00020; font-size:12px; white-space: pre-wrap; }
@@ -50,23 +58,17 @@
 <body>
   <div class="app">
     <div class="left" id="left"><div id="canvas-wrap"></div></div>
-    <div class="resizer-x" id="resizerX" title="ドラッグで幅を調整"></div>
+    <div class="resizer-x" id="resizerX"></div>
     <div class="right">
-      <div class="pane-title">右：①グローバル定義 → ②setup() → ③draw()（Cmd/Ctrl+Enterで実行）</div>
-
+      <div class="pane-title">右：①グローバル → ②setup() → ③draw()（Cmd/Ctrl+Enterで実行）</div>
       <div class="right-body">
-        <!-- 上段：グローバル変数定義 -->
         <div class="globals-pane">
           <div class="editor">
-            <header>グローバル変数定義（例：<code>state.count = 0;</code> ／ もしくは <code>count = 0;</code>）</header>
+            <header>グローバル変数定義</header>
             <div class="cm-host"><textarea id="globals-editor"></textarea></div>
           </div>
         </div>
-
-        <!-- 仕切り（グローバルとエディタ群） -->
-        <div class="row-resizer-G" id="resizerGlobals" title="ドラッグで高さを調整"></div>
-
-        <!-- 下段：setup / draw -->
+        <div class="row-resizer-G" id="resizerGlobals"></div>
         <div class="editors">
           <div class="stack" id="stack">
             <div class="top-pane">
@@ -75,7 +77,7 @@
                 <div class="cm-host"><textarea id="setup-editor"></textarea></div>
               </div>
             </div>
-            <div class="row-resizer" id="resizerY" title="ドラッグで高さを調整"></div>
+            <div class="row-resizer" id="resizerY"></div>
             <div class="bottom-pane">
               <div class="editor">
                 <header>draw() の中身</header>
@@ -85,226 +87,58 @@
           </div>
         </div>
       </div>
-
       <div class="statusbar" id="status">Cmd/Ctrl+Enter で実行します</div>
       <div class="errors" id="errors"></div>
     </div>
   </div>
 
   <script>
-    // ローカルストレージキー
-    const LS = {
-      globals: 'p5live.globals',
-      setup:   'p5live.setup',
-      draw:    'p5live.draw',
-      left:    'p5live.leftWidth',
-      ratioG:  'p5live.topRatioGlobals',
-      ratioE:  'p5live.topRatioEditors'
-    };
+    const LS={globals:'p5live.globals',setup:'p5live.setup',draw:'p5live.draw',left:'p5live.leftWidth',ratioG:'p5live.topRatioGlobals',ratioE:'p5live.topRatioEditors'};
+    const DEFAULT_GLOBALS=`state.count = state.count ?? 0;`;
+    const DEFAULT_SETUP=`noStroke(); background(255); state.count=0;`;
+    const DEFAULT_DRAW=`background(240); fill(0,120,255,150); circle(mouseX,mouseY,80); state.count++; text('count:'+state.count,12,22);`;
 
-    // 初期コード
-    const DEFAULT_GLOBALS =
-`// ここで定義した値は setup()/draw() の両方で使えます
-// 推奨：state へ格納する（例）
-// state.count = 0;
-// 別案：宣言キーワードなしで代入（例）
-// count = 0; // ← これでも state.count として扱われます
-state.count = state.count ?? 0;`;
+    const cmGlobals=CodeMirror.fromTextArea(document.getElementById('globals-editor'),{mode:"javascript",lineNumbers:true,lineWrapping:true,autoCloseBrackets:true});
+    const cmSetup=CodeMirror.fromTextArea(document.getElementById('setup-editor'),{mode:"javascript",lineNumbers:true,lineWrapping:true,autoCloseBrackets:true});
+    const cmDraw=CodeMirror.fromTextArea(document.getElementById('draw-editor'),{mode:"javascript",lineNumbers:true,lineWrapping:true,autoCloseBrackets:true});
+    cmGlobals.setValue(localStorage.getItem(LS.globals)??DEFAULT_GLOBALS);
+    cmSetup.setValue(localStorage.getItem(LS.setup)??DEFAULT_SETUP);
+    cmDraw.setValue(localStorage.getItem(LS.draw)??DEFAULT_DRAW);
 
-    const DEFAULT_SETUP =
-`// キャンバスは自動作成（createCanvas不要）
-noStroke();
-background(255);
-state.count = 0; // 初期化`;
+    const debounce=(f,ms)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>f(...a),ms);};};
+    cmGlobals.on('change',debounce(()=>localStorage.setItem(LS.globals,cmGlobals.getValue()),300));
+    cmSetup.on('change',debounce(()=>localStorage.setItem(LS.setup,cmSetup.getValue()),300));
+    cmDraw.on('change',debounce(()=>localStorage.setItem(LS.draw,cmDraw.getValue()),300));
+    [cmGlobals,cmSetup,cmDraw].forEach(cm=>cm.addKeyMap({'Cmd-Enter':runSketch,'Ctrl-Enter':runSketch}));
 
-    const DEFAULT_DRAW =
-`background(240);
-fill(0, 120, 255, 150);
-circle(mouseX, mouseY, 80);
-
-// カウンタ表示（グローバルの例）
-state.count++;
-fill(20); textSize(14);
-text('count: ' + state.count, 12, 22);`;
-
-    // CodeMirror 初期化
-    const cmGlobals = CodeMirror.fromTextArea(document.getElementById('globals-editor'), { mode:"javascript", lineNumbers:true, lineWrapping:true, autoCloseBrackets:true });
-    const cmSetup   = CodeMirror.fromTextArea(document.getElementById('setup-editor'),   { mode:"javascript", lineNumbers:true, lineWrapping:true, autoCloseBrackets:true });
-    const cmDraw    = CodeMirror.fromTextArea(document.getElementById('draw-editor'),    { mode:"javascript", lineNumbers:true, lineWrapping:true, autoCloseBrackets:true });
-
-    // 復元
-    cmGlobals.setValue(localStorage.getItem(LS.globals) ?? DEFAULT_GLOBALS);
-    cmSetup.setValue(  localStorage.getItem(LS.setup)   ?? DEFAULT_SETUP);
-    cmDraw.setValue(   localStorage.getItem(LS.draw)    ?? DEFAULT_DRAW);
-
-    const savedLeft  = localStorage.getItem(LS.left);
-    const savedRG    = localStorage.getItem(LS.ratioG);
-    const savedRE    = localStorage.getItem(LS.ratioE);
-    if (savedLeft) document.documentElement.style.setProperty('--leftWidth', savedLeft);
-    if (savedRG)   document.documentElement.style.setProperty('--topRatioGlobals', savedRG);
-    if (savedRE)   document.documentElement.style.setProperty('--topRatioEditors', savedRE);
-
-    // オートセーブ（デバウンス）
-    const debounce = (fn, ms)=>{ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; };
-    cmGlobals.on('change', debounce(()=> localStorage.setItem(LS.globals, cmGlobals.getValue()), 300));
-    cmSetup.on('change',   debounce(()=> localStorage.setItem(LS.setup,   cmSetup.getValue()),   300));
-    cmDraw.on('change',    debounce(()=> localStorage.setItem(LS.draw,    cmDraw.getValue()),    300));
-
-    // 実行ショートカット
-    [cmGlobals, cmSetup, cmDraw].forEach(cm => cm.addKeyMap({ 'Cmd-Enter': runSketch, 'Ctrl-Enter': runSketch }));
-
-    // 仕切り（左右）
-    (function(){
-      const bar = document.getElementById('resizerX'); let drag=false;
-      bar.addEventListener('mousedown', e=>{ drag=true; document.body.style.cursor='col-resize'; e.preventDefault(); });
-      window.addEventListener('mousemove', e=>{
-        if(!drag) return;
-        const w = Math.min(Math.max(e.clientX, 200), window.innerWidth - 320);
-        document.documentElement.style.setProperty('--leftWidth', w + 'px');
-        localStorage.setItem(LS.left, w + 'px');
-        hostResizeCanvasToLeftPane(); refreshEditors();
-      });
-      window.addEventListener('mouseup', ()=>{ drag=false; document.body.style.cursor='default'; });
-    })();
-
-    // 仕切り（グローバル vs エディタ群）
-    (function(){
-      const bar = document.getElementById('resizerGlobals'); let drag=false, y0=0, r0=0;
-      bar.addEventListener('mousedown', e=>{
-        drag=true; y0=e.clientY; document.body.style.cursor='row-resize'; e.preventDefault();
-        const body = document.querySelector('.right-body').getBoundingClientRect();
-        const topH = document.querySelector('.globals-pane').getBoundingClientRect().height;
-        r0 = topH / body.height;
-      });
-      window.addEventListener('mousemove', e=>{
-        if(!drag) return;
-        const body = document.querySelector('.right-body').getBoundingClientRect();
-        let r = r0 + (e.clientY - y0) / body.height;
-        r = Math.min(Math.max(r, 0.12), 0.6);
-        document.documentElement.style.setProperty('--topRatioGlobals', r.toString());
-        localStorage.setItem(LS.ratioG, r.toString());
-        refreshEditors();
-      });
-      window.addEventListener('mouseup', ()=>{ drag=false; document.body.style.cursor='default'; });
-    })();
-
-    // 仕切り（setup vs draw）
-    (function(){
-      const bar = document.getElementById('resizerY'); let drag=false, y0=0, r0=0;
-      bar.addEventListener('mousedown', e=>{
-        drag=true; y0=e.clientY; document.body.style.cursor='row-resize'; e.preventDefault();
-        const stack = document.getElementById('stack').getBoundingClientRect();
-        const topH  = document.querySelector('.top-pane').getBoundingClientRect().height;
-        r0 = topH / stack.height;
-      });
-      window.addEventListener('mousemove', e=>{
-        if(!drag) return;
-        const stack = document.getElementById('stack').getBoundingClientRect();
-        let r = r0 + (e.clientY - y0) / stack.height;
-        r = Math.min(Math.max(r, 0.15), 0.85);
-        document.documentElement.style.setProperty('--topRatioEditors', r.toString());
-        localStorage.setItem(LS.ratioE, r.toString());
-        refreshEditors();
-      });
-      window.addEventListener('mouseup', ()=>{ drag=false; document.body.style.cursor='default'; });
-    })();
-
-    // p5 実行
-    let currentP5 = null;
-
+    let currentP5=null;
     function runSketch(){
-      // 最新テキスト確定
-      cmGlobals.save(); cmSetup.save(); cmDraw.save();
-      cmGlobals.refresh(); cmSetup.refresh(); cmDraw.refresh();
-
-      const globalsBody = cmGlobals.getValue();
-      const setupBody   = cmSetup.getValue();
-      const drawBody    = cmDraw.getValue();
-      clearErrors();
-
-      // 既存インスタンス破棄＆左ペインクリア
-      if(currentP5){ try{ currentP5.remove(); } catch(_){} currentP5=null; }
+      cmGlobals.save();cmSetup.save();cmDraw.save();cmGlobals.refresh();cmSetup.refresh();cmDraw.refresh();
+      const g=cmGlobals.getValue(),s=cmSetup.getValue(),d=cmDraw.getValue();clearErrors();
+      if(currentP5){try{currentP5.remove();}catch(_){}currentP5=null;}
       document.getElementById('canvas-wrap').innerHTML='';
-
-      // 共有 state（この run 内で setup/draw に共有）
-      const state = {};
-
-      // 評価用ラッパ（p と state を共有）
-      const runGlobals = new Function('p','state', `with(p){ with(state){ ${globalsBody} } }`);
-      const runSetup   = new Function('p','state', `with(p){ with(state){ ${setupBody} } }`);
-      const runDraw    = new Function('p','state', `with(p){ with(state){ ${drawBody} } }`);
-
-      const sketch = (p)=>{
-        // 必ずキャンバスを先に用意
-        const ensureCanvas = ()=>{
-          const w = Math.max(200, document.getElementById('left').clientWidth);
-          const h = window.innerHeight;
-          if(!p._renderer) p.createCanvas(w,h); else p.resizeCanvas(w,h);
-          if(p.canvas && p.canvas.parentElement?.id !== 'canvas-wrap'){
-            document.getElementById('canvas-wrap').appendChild(p.canvas);
-          }
-        };
-        // createCanvas の多重を安全化
-        const patchCreateCanvas = ()=>{
-          const orig = p.createCanvas.bind(p);
-          p.createCanvas = function(w,h,...rest){
-            if(p._renderer){ p.resizeCanvas(w,h); return p._renderer; }
-            const r = orig(w,h,...rest);
-            if(p.canvas && p.canvas.parentElement?.id !== 'canvas-wrap'){
-              document.getElementById('canvas-wrap').appendChild(p.canvas);
-            }
-            return r;
-          };
-        };
-
-        p.setup = ()=>{
-          try{
-            ensureCanvas(); patchCreateCanvas();
-            // グローバル定義は「一度だけ」先に実行
-            runGlobals(p, state);
-            // 次に setup 本体
-            runSetup(p, state);
-          }catch(e){ reportError('setup', e); p.noLoop(); }
-        };
-
-        p.draw = ()=>{
-          try{
-            runDraw(p, state);
-          }catch(e){ reportError('draw', e); p.noLoop(); }
-        };
-
-        p.windowResized = ()=>{
-          try{
-            const w = Math.max(200, document.getElementById('left').clientWidth);
-            p.resizeCanvas(w, window.innerHeight);
-          }catch(e){}
-        };
+      const state={};
+      const runG=new Function('p','state',`with(p){with(state){${g}}}`);
+      const runS=new Function('p','state',`with(p){with(state){${s}}}`);
+      const runD=new Function('p','state',`with(p){with(state){${d}}}`);
+      const sketch=p=>{
+        const ensure=()=>{const w=Math.max(200,document.getElementById('left').clientWidth),h=window.innerHeight;
+          if(!p._renderer)p.createCanvas(w,h);else p.resizeCanvas(w,h);
+          if(p.canvas.parentElement?.id!=='canvas-wrap')document.getElementById('canvas-wrap').appendChild(p.canvas);};
+        p.setup=()=>{try{ensure();runG(p,state);runS(p,state);}catch(e){err('setup',e);p.noLoop();}};
+        p.draw =()=>{try{runD(p,state);}catch(e){err('draw',e);p.noLoop();}};
+        p.windowResized=()=>{try{p.resizeCanvas(Math.max(200,document.getElementById('left').clientWidth),window.innerHeight);}catch(e){}};
       };
-
-      currentP5 = new p5(sketch, document.getElementById('canvas-wrap'));
+      currentP5=new p5(sketch,document.getElementById('canvas-wrap'));
       setStatus('実行しました（Cmd/Ctrl+Enter）');
     }
 
-    function setStatus(msg){ document.getElementById('status').textContent = msg; }
-    function clearErrors(){ document.getElementById('errors').textContent = ''; }
-    function reportError(phase, err){
-      document.getElementById('errors').textContent = `⚠️ ${phase} エラー: ${err?.message || err}`;
-      setStatus(`${phase} でエラー`);
-      console.error(`[${phase}]`, err);
-    }
-
-    function hostResizeCanvasToLeftPane(){
-      if(!currentP5) return;
-      try {
-        currentP5.resizeCanvas(Math.max(200, document.getElementById('left').clientWidth), window.innerHeight);
-      } catch(e){}
-    }
-    function refreshEditors(){ cmGlobals.refresh(); cmSetup.refresh(); cmDraw.refresh(); }
-    window.addEventListener('resize', ()=>{ hostResizeCanvasToLeftPane(); refreshEditors(); });
-
-    // 初回実行
-    runSketch();
-    requestAnimationFrame(refreshEditors);
+    function setStatus(msg){document.getElementById('status').textContent=msg;}
+    function err(ph,e){document.getElementById('errors').textContent=`⚠️ ${ph} エラー: ${e.message||e}`;}
+    function clearErrors(){document.getElementById('errors').textContent='';}
+    function refreshEditors(){cmGlobals.refresh();cmSetup.refresh();cmDraw.refresh();}
+    window.addEventListener('resize',()=>refreshEditors());
+    runSketch();requestAnimationFrame(refreshEditors);
   </script>
 </body>
 </html>
