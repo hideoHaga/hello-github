@@ -2,20 +2,23 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>p5.js Live Editor (Auto Scrollbars + Free Split)</title>
+  <title>p5.js Live Editor (Scroll Fix + Free Split)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- p5.js -->
   <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+  <!-- CodeMirror -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.css">
   <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/javascript/javascript.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/edit/closebrackets.js"></script>
+
   <style>
     :root { --leftWidth: 50vw; --topRatioGlobals: 0.22; --topRatioEditors: 0.5; }
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; background: #f7f7f7; color: #222; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
     .app { display: flex; width: 100%; height: 100%; overflow: hidden; }
 
-    /* 左ペイン */
+    /* 左ペイン（キャンバス） */
     .left { width: var(--leftWidth); min-width: 240px; background: #fff; border-right: 2px solid #ddd; display: flex; align-items: stretch; justify-content: center; }
     #canvas-wrap { position: relative; flex: 1; }
     canvas { display: block; }
@@ -35,18 +38,21 @@
     .row-resizer { height: 6px; background: #eee; border: 1px solid #ddd; border-left: 0; border-right: 0; cursor: row-resize; }
     .bottom-pane { flex: 1 1 auto; min-height: 80px; display: flex; flex-direction: column; }
 
-    /* 各エディタ */
+    /* エディタ枠 */
     .editor { flex: 1; display: flex; flex-direction: column; background:#fff; border:1px solid #ccc; border-radius: 8px; overflow: hidden; }
     .editor header { font-size: 12px; padding: 6px 8px; color:#0366d6; background:#f8f8f8; border-bottom:1px solid #ddd; }
 
-    .cm-host { flex: 1; }
+    .cm-host { flex: 1; }               /* ← 親はoverflow指定しない */
     .CodeMirror {
       height: 100%;
       width: 100%;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
       font-size: 13px;
       line-height: 1.5;
-      overflow: auto; /* ←必要時のみスクロールバー表示 */
+      overflow: hidden;                 /* ← CodeMirror本体はhidden */
+    }
+    .CodeMirror-scroll {
+      overflow: auto;                   /* ← 必要時のみ縦横スクロールを表示（正規の要素） */
     }
 
     .statusbar { padding: 6px 12px; border-top:1px solid #ddd; font-size:12px; color:#555; background:#f9f9f9; }
@@ -99,22 +105,26 @@
     const DEFAULT_SETUP=`noStroke(); background(255); state.count=0;`;
     const DEFAULT_DRAW=`background(240); fill(0,120,255,150); circle(mouseX,mouseY,80); state.count++; text('count:'+state.count,12,22);`;
 
-    const cmGlobals=CodeMirror.fromTextArea(document.getElementById('globals-editor'),{mode:"javascript",lineNumbers:true,lineWrapping:true,autoCloseBrackets:true});
-    const cmSetup=CodeMirror.fromTextArea(document.getElementById('setup-editor'),{mode:"javascript",lineNumbers:true,lineWrapping:true,autoCloseBrackets:true});
-    const cmDraw=CodeMirror.fromTextArea(document.getElementById('draw-editor'),{mode:"javascript",lineNumbers:true,lineWrapping:true,autoCloseBrackets:true});
+    // CodeMirror 初期化（横スクロールを出すため折り返しオフ）
+    const cmOpts = { mode:"javascript", lineNumbers:true, lineWrapping:false, autoCloseBrackets:true };
+    const cmGlobals=CodeMirror.fromTextArea(document.getElementById('globals-editor'), cmOpts);
+    const cmSetup  =CodeMirror.fromTextArea(document.getElementById('setup-editor'),   cmOpts);
+    const cmDraw   =CodeMirror.fromTextArea(document.getElementById('draw-editor'),    cmOpts);
+
     cmGlobals.setValue(localStorage.getItem(LS.globals)??DEFAULT_GLOBALS);
     cmSetup.setValue(localStorage.getItem(LS.setup)??DEFAULT_SETUP);
     cmDraw.setValue(localStorage.getItem(LS.draw)??DEFAULT_DRAW);
 
     const debounce=(f,ms)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>f(...a),ms);};};
     cmGlobals.on('change',debounce(()=>localStorage.setItem(LS.globals,cmGlobals.getValue()),300));
-    cmSetup.on('change',debounce(()=>localStorage.setItem(LS.setup,cmSetup.getValue()),300));
-    cmDraw.on('change',debounce(()=>localStorage.setItem(LS.draw,cmDraw.getValue()),300));
+    cmSetup.on('change', debounce(()=>localStorage.setItem(LS.setup,  cmSetup.getValue()), 300));
+    cmDraw.on('change',  debounce(()=>localStorage.setItem(LS.draw,   cmDraw.getValue()),  300));
     [cmGlobals,cmSetup,cmDraw].forEach(cm=>cm.addKeyMap({'Cmd-Enter':runSketch,'Ctrl-Enter':runSketch}));
 
     let currentP5=null;
     function runSketch(){
-      cmGlobals.save();cmSetup.save();cmDraw.save();cmGlobals.refresh();cmSetup.refresh();cmDraw.refresh();
+      cmGlobals.save();cmSetup.save();cmDraw.save();
+      cmGlobals.refresh();cmSetup.refresh();cmDraw.refresh();
       const g=cmGlobals.getValue(),s=cmSetup.getValue(),d=cmDraw.getValue();clearErrors();
       if(currentP5){try{currentP5.remove();}catch(_){}currentP5=null;}
       document.getElementById('canvas-wrap').innerHTML='';
@@ -139,7 +149,7 @@
     function clearErrors(){document.getElementById('errors').textContent='';}
     function refreshEditors(){cmGlobals.refresh();cmSetup.refresh();cmDraw.refresh();}
 
-    // --- 境界ドラッグ処理 ---
+    /* --- 境界ドラッグ --- */
     // 左右
     (function(){
       const bar=document.getElementById('resizerX');let drag=false;
@@ -153,15 +163,14 @@
       });
       window.addEventListener('mouseup',()=>{drag=false;document.body.style.cursor='default';});
     })();
-
-    // グローバル vs setup/draw
+    // グローバル vs エディタ群
     (function(){
       const bar=document.getElementById('resizerGlobals');let drag=false,y0=0,r0=0;
       bar.addEventListener('mousedown',e=>{
-        drag=true;y0=e.clientY;
+        drag=true;y0=e.clientY;document.body.style.cursor='row-resize';e.preventDefault();
         const body=document.querySelector('.right-body').getBoundingClientRect();
         const topH=document.querySelector('.globals-pane').getBoundingClientRect().height;
-        r0=topH/body.height;document.body.style.cursor='row-resize';e.preventDefault();
+        r0=topH/body.height;
       });
       window.addEventListener('mousemove',e=>{
         if(!drag)return;
@@ -173,15 +182,14 @@
       });
       window.addEventListener('mouseup',()=>{drag=false;document.body.style.cursor='default';});
     })();
-
     // setup vs draw
     (function(){
       const bar=document.getElementById('resizerY');let drag=false,y0=0,r0=0;
       bar.addEventListener('mousedown',e=>{
-        drag=true;y0=e.clientY;
+        drag=true;y0=e.clientY;document.body.style.cursor='row-resize';e.preventDefault();
         const stack=document.getElementById('stack').getBoundingClientRect();
         const topH=document.querySelector('.top-pane').getBoundingClientRect().height;
-        r0=topH/stack.height;document.body.style.cursor='row-resize';e.preventDefault();
+        r0=topH/stack.height;
       });
       window.addEventListener('mousemove',e=>{
         if(!drag)return;
@@ -195,7 +203,10 @@
     })();
 
     window.addEventListener('resize',()=>refreshEditors());
-    runSketch();requestAnimationFrame(refreshEditors);
+
+    // 初回実行
+    runSketch();
+    requestAnimationFrame(refreshEditors);
   </script>
 </body>
 </html>
