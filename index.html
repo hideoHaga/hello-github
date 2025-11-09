@@ -2,119 +2,264 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>p5.js Live Editor (Light Mode)</title>
+  <title>p5.js Live Editor (Light / Global + CodeMirror + Split + Autosave)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- p5.js -->
   <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+
+  <!-- CodeMirror (v5) Light Theme -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.css">
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/javascript/javascript.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/edit/closebrackets.js"></script>
+
   <style>
-    :root { --leftWidth: 50vw; }
+    :root { --leftWidth: 50vw; --topRatio: 0.5; }
     * { box-sizing: border-box; }
-    html, body { height: 100%; margin: 0; background: #f7f7f7; color: #222; font-family: "Segoe UI", sans-serif; }
+    html, body { height: 100%; margin: 0; background: #f7f7f7; color: #222; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
     .app { display: flex; width: 100%; height: 100%; overflow: hidden; }
+
+    /* 左＝キャンバス領域 */
     .left {
-      width: var(--leftWidth);
-      min-width: 240px;
-      background: #fff;
-      display: flex; align-items: center; justify-content: center;
-      border-right: 2px solid #ddd;
+      width: var(--leftWidth); min-width: 240px; background: #fff;
+      border-right: 2px solid #ddd; display: flex; align-items: stretch; justify-content: center;
     }
-    .resizer {
-      width: 6px; cursor: col-resize; background: #eee;
-    }
-    .right {
-      flex: 1; min-width: 280px; display: flex; flex-direction: column; background: #fafafa;
-    }
+    #canvas-wrap { position: relative; flex: 1; }
+    canvas { display: block; }
+
+    /* 仕切り（左右） */
+    .resizer-x { width: 6px; cursor: col-resize; background: #eee; }
+
+    /* 右＝エディタ領域 */
+    .right { flex: 1; min-width: 280px; display: flex; flex-direction: column; background: #fafafa; }
     .pane-title { padding: 8px 12px; font-size: 13px; color: #555; background:#f0f0f0; border-bottom:1px solid #ddd; }
-    .editors { flex: 1; display: flex; flex-direction: column; gap: 6px; padding: 8px; overflow: hidden; }
-    .editor {
-      flex: 1; display: flex; flex-direction: column; background:#fff; border:1px solid #ccc; border-radius: 6px;
-    }
+
+    /* 右の上下エディタ＋上下の仕切り */
+    .editors { flex: 1; display: flex; flex-direction: column; padding: 8px; gap: 6px; overflow: hidden; }
+    .stack { position: relative; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .top-pane { flex: 0 0 calc(var(--topRatio) * 100% - 3px); display: flex; flex-direction: column; min-height: 80px; }
+    .row-resizer { height: 6px; background: #eee; border: 1px solid #ddd; border-left: 0; border-right: 0; cursor: row-resize; }
+    .bottom-pane { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 80px; }
+
+    .editor { flex: 1; display: flex; flex-direction: column; background:#fff; border:1px solid #ccc; border-radius: 8px; overflow: hidden; }
     .editor header { font-size: 12px; padding: 6px 8px; color:#0366d6; background:#f8f8f8; border-bottom:1px solid #ddd; }
-    textarea {
-      flex: 1; width: 100%; padding: 10px; resize: none; border: 0; outline: none;
-      background: #fff; color: #111; font-family: monospace; font-size: 13px;
+
+    /* CodeMirror sizing inside editor */
+    .cm-host { flex: 1; }
+    .CodeMirror {
+      height: 100%;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 13px; line-height: 1.5;
     }
-    .run-bar {
-      padding: 10px; border-top:1px solid #ddd; display: flex; gap: 10px; align-items: center; background:#f9f9f9;
-    }
+
+    .run-bar { padding: 10px; border-top:1px solid #ddd; display: flex; gap: 10px; align-items: center; background:#f9f9f9; }
     button {
-      padding: 8px 14px; border-radius: 6px; border: 1px solid #ccc;
+      padding: 8px 14px; border-radius: 8px; border: 1px solid #ccc;
       background: #007bff; color: #fff; font-weight: 600; cursor: pointer;
     }
+    button:active { transform: translateY(1px); }
     .status { font-size: 12px; color:#555; }
     .hint { font-size: 12px; color:#888; margin-left:auto; }
   </style>
 </head>
 <body>
   <div class="app">
-    <div class="left" id="left">
-      <div id="canvas-wrap"></div>
-    </div>
-    <div class="resizer" id="resizer"></div>
+    <div class="left" id="left"><div id="canvas-wrap"></div></div>
+    <div class="resizer-x" id="resizerX" title="ドラッグで幅を調整"></div>
     <div class="right">
       <div class="pane-title">右：コードエディタ（上＝setup() の中身／下＝draw() の中身）</div>
+
       <div class="editors">
-        <div class="editor">
-          <header>setup() の中身</header>
-          <textarea id="setup-editor" spellcheck="false">
-p.createCanvas(p.windowWidth/2, p.windowHeight);
-p.background(255);
-p.noStroke();
-          </textarea>
-        </div>
-        <div class="editor">
-          <header>draw() の中身</header>
-          <textarea id="draw-editor" spellcheck="false">
-p.background(255);
-p.fill(0, 150, 255);
-p.circle(p.mouseX, p.mouseY, 80);
-          </textarea>
+        <div class="stack" id="stack">
+          <!-- 上段 -->
+          <div class="top-pane">
+            <div class="editor">
+              <header>setup() の中身</header>
+              <div class="cm-host"><textarea id="setup-editor"></textarea></div>
+            </div>
+          </div>
+          <!-- 仕切り（上下） -->
+          <div class="row-resizer" id="resizerY" title="ドラッグで高さを調整"></div>
+          <!-- 下段 -->
+          <div class="bottom-pane">
+            <div class="editor">
+              <header>draw() の中身</header>
+              <div class="cm-host"><textarea id="draw-editor"></textarea></div>
+            </div>
+          </div>
         </div>
       </div>
+
       <div class="run-bar">
         <button id="run-btn">実行</button>
         <div class="status" id="status">待機中</div>
-        <div class="hint">右側を編集 → 実行ボタン</div>
+        <div class="hint">Ctrl/Cmd+Enter でも実行・自動保存あり</div>
       </div>
     </div>
   </div>
 
   <script>
-    // リサイズバー
-    const resizer = document.getElementById("resizer");
-    const left = document.getElementById("left");
-    let dragging = false;
-    resizer.addEventListener("mousedown", () => dragging = true);
-    window.addEventListener("mousemove", (e) => {
-      if (!dragging) return;
-      const w = Math.min(Math.max(e.clientX, 200), window.innerWidth - 280);
-      document.documentElement.style.setProperty("--leftWidth", w + "px");
+    // ------- 定数（ローカルストレージキー）
+    const LS = {
+      setup: 'p5live.setup',
+      draw: 'p5live.draw',
+      leftWidth: 'p5live.leftWidth',
+      topRatio: 'p5live.topRatio'
+    };
+
+    // ------- 初期サンプルコード
+    const DEFAULT_SETUP =
+`// 左ペイン幅×ウィンドウ高でキャンバスを作成し、左ペインに配置
+const w = Math.max(200, document.getElementById('left').clientWidth);
+const h = window.innerHeight;
+createCanvas(w, h).parent('canvas-wrap');
+noStroke();
+background(255);`;
+
+    const DEFAULT_DRAW =
+`// 毎フレーム：白背景＋マウス追従の円
+background(255);
+fill(30, 144, 255, 180);
+circle(mouseX, mouseY, 80);
+
+// ガイド
+fill(20); textSize(14);
+text('左右・上下の仕切りはドラッグで調整／編集後は「実行」', 12, 22);`;
+
+    // ------- CodeMirror セットアップ
+    const cmSetup = CodeMirror.fromTextArea(document.getElementById('setup-editor'), {
+      mode: "javascript", lineNumbers: true, lineWrapping: true, autoCloseBrackets: true
     });
-    window.addEventListener("mouseup", () => dragging = false);
+    const cmDraw  = CodeMirror.fromTextArea(document.getElementById('draw-editor'), {
+      mode: "javascript", lineNumbers: true, lineWrapping: true, autoCloseBrackets: true
+    });
 
-    // 実行処理
-    let currentP5;
+    // 復元（コード）
+    cmSetup.setValue(localStorage.getItem(LS.setup) ?? DEFAULT_SETUP);
+    cmDraw.setValue(localStorage.getItem(LS.draw) ?? DEFAULT_DRAW);
+
+    // 復元（レイアウト）
+    const savedLeft = localStorage.getItem(LS.leftWidth);
+    if (savedLeft) document.documentElement.style.setProperty('--leftWidth', savedLeft);
+    const savedTop = localStorage.getItem(LS.topRatio);
+    if (savedTop) document.documentElement.style.setProperty('--topRatio', savedTop);
+
+    // オートセーブ（デバウンス）
+    function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t = setTimeout(()=>fn(...a), ms); }; }
+    const saveSetup = debounce(()=> localStorage.setItem(LS.setup, cmSetup.getValue()), 300);
+    const saveDraw  = debounce(()=> localStorage.setItem(LS.draw,  cmDraw.getValue()), 300);
+    cmSetup.on('change', saveSetup);
+    cmDraw.on('change',  saveDraw);
+
+    // Ctrl/Cmd+Enter で実行
+    [cmSetup, cmDraw].forEach(cm=>{
+      cm.addKeyMap({ 'Cmd-Enter': runSketch, 'Ctrl-Enter': runSketch });
+    });
+
+    // ------- 左右ドラッグで幅調整
+    (function(){
+      const bar = document.getElementById('resizerX');
+      let dragging = false;
+      bar.addEventListener('mousedown', (e) => { dragging = true; document.body.style.cursor='col-resize'; e.preventDefault(); });
+      window.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        const w = Math.min(Math.max(e.clientX, 200), window.innerWidth - 286); // 右最小≈280 + 仕切り幅
+        const css = w + 'px';
+        document.documentElement.style.setProperty('--leftWidth', css);
+        localStorage.setItem(LS.leftWidth, css);
+        hostResizeCanvasToLeftPane();
+        refreshEditors();
+      });
+      window.addEventListener('mouseup', ()=>{ dragging = false; document.body.style.cursor='default'; });
+    })();
+
+    // ------- 上下ドラッグで高さ調整（右側）
+    (function(){
+      const bar = document.getElementById('resizerY');
+      let dragging = false;
+      let startY = 0;
+      let startRatio = 0;
+      bar.addEventListener('mousedown', (e)=>{
+        dragging = true; startY = e.clientY;
+        const stackRect = document.getElementById('stack').getBoundingClientRect();
+        const topH = document.querySelector('.top-pane').getBoundingClientRect().height;
+        startRatio = topH / stackRect.height;
+        document.body.style.cursor='row-resize';
+        e.preventDefault();
+      });
+      window.addEventListener('mousemove', (e)=>{
+        if(!dragging) return;
+        const stackRect = document.getElementById('stack').getBoundingClientRect();
+        let ratio = startRatio + (e.clientY - startY) / stackRect.height;
+        ratio = Math.min(Math.max(ratio, 0.15), 0.85); // 上下の最小/最大高さを確保
+        const css = ratio.toString();
+        document.documentElement.style.setProperty('--topRatio', css);
+        localStorage.setItem(LS.topRatio, css);
+        refreshEditors();
+      });
+      window.addEventListener('mouseup', ()=>{ dragging=false; document.body.style.cursor='default'; });
+    })();
+
+    // ------- p5 スケッチ実行（グローバルモード）
     function runSketch() {
-      const setupCode = document.getElementById("setup-editor").value;
-      const drawCode = document.getElementById("draw-editor").value;
-      if (currentP5) currentP5.remove();
+      const setupBody = cmSetup.getValue();
+      const drawBody  = cmDraw.getValue();
 
-      const sketch = (p) => {
-        p.setup = function() {
-          try { eval(setupCode); } 
-          catch (e) { document.getElementById("status").textContent = "setup エラー: " + e.message; }
-        };
-        p.draw = function() {
-          try { eval(drawCode); } 
-          catch (e) { document.getElementById("status").textContent = "draw エラー: " + e.message; p.noLoop(); }
-        };
-      };
+      // 左ペインをクリア（古いキャンバス削除）
+      document.getElementById('canvas-wrap').innerHTML = '';
 
-      currentP5 = new p5(sketch, document.getElementById("canvas-wrap"));
-      document.getElementById("status").textContent = "実行中";
+      // 旧ユーザーコードスクリプトを除去
+      const old = document.getElementById('p5-user-script');
+      if (old) old.remove();
+
+      // ユーザーコード（setup/draw）をグローバルで再定義
+      const source = `
+        function setup(){ ${setupBody}\n }
+        function draw(){ ${drawBody}\n }
+        function windowResized(){
+          try {
+            const left = document.getElementById('left');
+            const w = Math.max(200, left.clientWidth);
+            const h = window.innerHeight;
+            if (typeof resizeCanvas === 'function') resizeCanvas(w, h);
+          } catch(e){}
+        }
+      `;
+      const blob = new Blob([source], { type: 'application/javascript' });
+      const url  = URL.createObjectURL(blob);
+      const s    = document.createElement('script');
+      s.id = 'p5-user-script';
+      s.src = url;
+      document.body.appendChild(s);
+
+      setStatus('実行しました');
     }
 
-    document.getElementById("run-btn").addEventListener("click", runSketch);
+    // 実行ボタン
+    document.getElementById('run-btn').addEventListener('click', runSketch);
+
+    // 画面サイズ変更時：キャンバス追従 & エディタ再描画
+    function hostResizeCanvasToLeftPane(){
+      try {
+        const left = document.getElementById('left');
+        const w = Math.max(200, left.clientWidth);
+        const h = window.innerHeight;
+        if (typeof resizeCanvas === 'function') resizeCanvas(w, h);
+      } catch(e){}
+    }
+    function refreshEditors(){
+      // CodeMirror は入れ物サイズ変更後に refresh が必要
+      cmSetup.refresh();
+      cmDraw.refresh();
+    }
+    window.addEventListener('resize', ()=>{ hostResizeCanvasToLeftPane(); refreshEditors(); });
+
+    function setStatus(msg){ document.getElementById('status').textContent = msg; }
+
+    // 初回実行
     runSketch();
+    // 初回のレイアウト反映後に CodeMirror リフレッシュ
+    requestAnimationFrame(refreshEditors);
   </script>
 </body>
 </html>
