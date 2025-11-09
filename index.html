@@ -2,27 +2,27 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>p5.js Live Editor (Scrollbars + Cmd/Ctrl+Enter 専用)</title>
+  <title>p5.js Live Editor (Auto Scrollbars + Free Split)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.css">
   <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/javascript/javascript.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/edit/closebrackets.js"></script>
-
   <style>
     :root { --leftWidth: 50vw; --topRatioGlobals: 0.22; --topRatioEditors: 0.5; }
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; background: #f7f7f7; color: #222; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
     .app { display: flex; width: 100%; height: 100%; overflow: hidden; }
 
+    /* 左ペイン */
     .left { width: var(--leftWidth); min-width: 240px; background: #fff; border-right: 2px solid #ddd; display: flex; align-items: stretch; justify-content: center; }
     #canvas-wrap { position: relative; flex: 1; }
     canvas { display: block; }
 
+    /* 右ペイン */
     .resizer-x { width: 6px; cursor: col-resize; background: #eee; }
     .right { flex: 1; min-width: 320px; display: flex; flex-direction: column; background: #fafafa; }
-
     .pane-title { padding: 8px 12px; font-size: 13px; color: #555; background:#f0f0f0; border-bottom:1px solid #ddd; }
 
     .right-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
@@ -35,20 +35,18 @@
     .row-resizer { height: 6px; background: #eee; border: 1px solid #ddd; border-left: 0; border-right: 0; cursor: row-resize; }
     .bottom-pane { flex: 1 1 auto; min-height: 80px; display: flex; flex-direction: column; }
 
+    /* 各エディタ */
     .editor { flex: 1; display: flex; flex-direction: column; background:#fff; border:1px solid #ccc; border-radius: 8px; overflow: hidden; }
     .editor header { font-size: 12px; padding: 6px 8px; color:#0366d6; background:#f8f8f8; border-bottom:1px solid #ddd; }
 
-    .cm-host { flex: 1; overflow: auto; }
+    .cm-host { flex: 1; }
     .CodeMirror {
       height: 100%;
       width: 100%;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
       font-size: 13px;
       line-height: 1.5;
-      overflow: auto !important;
-    }
-    .CodeMirror-scroll {
-      overflow: scroll !important;
+      overflow: auto; /* ←必要時のみスクロールバー表示 */
     }
 
     .statusbar { padding: 6px 12px; border-top:1px solid #ddd; font-size:12px; color:#555; background:#f9f9f9; }
@@ -61,6 +59,7 @@
     <div class="resizer-x" id="resizerX"></div>
     <div class="right">
       <div class="pane-title">右：①グローバル → ②setup() → ③draw()（Cmd/Ctrl+Enterで実行）</div>
+
       <div class="right-body">
         <div class="globals-pane">
           <div class="editor">
@@ -69,6 +68,7 @@
           </div>
         </div>
         <div class="row-resizer-G" id="resizerGlobals"></div>
+
         <div class="editors">
           <div class="stack" id="stack">
             <div class="top-pane">
@@ -87,6 +87,7 @@
           </div>
         </div>
       </div>
+
       <div class="statusbar" id="status">Cmd/Ctrl+Enter で実行します</div>
       <div class="errors" id="errors"></div>
     </div>
@@ -137,6 +138,62 @@
     function err(ph,e){document.getElementById('errors').textContent=`⚠️ ${ph} エラー: ${e.message||e}`;}
     function clearErrors(){document.getElementById('errors').textContent='';}
     function refreshEditors(){cmGlobals.refresh();cmSetup.refresh();cmDraw.refresh();}
+
+    // --- 境界ドラッグ処理 ---
+    // 左右
+    (function(){
+      const bar=document.getElementById('resizerX');let drag=false;
+      bar.addEventListener('mousedown',e=>{drag=true;document.body.style.cursor='col-resize';e.preventDefault();});
+      window.addEventListener('mousemove',e=>{
+        if(!drag)return;
+        const w=Math.min(Math.max(e.clientX,200),window.innerWidth-320);
+        document.documentElement.style.setProperty('--leftWidth',w+'px');
+        localStorage.setItem(LS.left,w+'px');
+        refreshEditors();
+      });
+      window.addEventListener('mouseup',()=>{drag=false;document.body.style.cursor='default';});
+    })();
+
+    // グローバル vs setup/draw
+    (function(){
+      const bar=document.getElementById('resizerGlobals');let drag=false,y0=0,r0=0;
+      bar.addEventListener('mousedown',e=>{
+        drag=true;y0=e.clientY;
+        const body=document.querySelector('.right-body').getBoundingClientRect();
+        const topH=document.querySelector('.globals-pane').getBoundingClientRect().height;
+        r0=topH/body.height;document.body.style.cursor='row-resize';e.preventDefault();
+      });
+      window.addEventListener('mousemove',e=>{
+        if(!drag)return;
+        const body=document.querySelector('.right-body').getBoundingClientRect();
+        let r=r0+(e.clientY-y0)/body.height;r=Math.min(Math.max(r,0.12),0.6);
+        document.documentElement.style.setProperty('--topRatioGlobals',r.toString());
+        localStorage.setItem(LS.ratioG,r.toString());
+        refreshEditors();
+      });
+      window.addEventListener('mouseup',()=>{drag=false;document.body.style.cursor='default';});
+    })();
+
+    // setup vs draw
+    (function(){
+      const bar=document.getElementById('resizerY');let drag=false,y0=0,r0=0;
+      bar.addEventListener('mousedown',e=>{
+        drag=true;y0=e.clientY;
+        const stack=document.getElementById('stack').getBoundingClientRect();
+        const topH=document.querySelector('.top-pane').getBoundingClientRect().height;
+        r0=topH/stack.height;document.body.style.cursor='row-resize';e.preventDefault();
+      });
+      window.addEventListener('mousemove',e=>{
+        if(!drag)return;
+        const stack=document.getElementById('stack').getBoundingClientRect();
+        let r=r0+(e.clientY-y0)/stack.height;r=Math.min(Math.max(r,0.15),0.85);
+        document.documentElement.style.setProperty('--topRatioEditors',r.toString());
+        localStorage.setItem(LS.ratioE,r.toString());
+        refreshEditors();
+      });
+      window.addEventListener('mouseup',()=>{drag=false;document.body.style.cursor='default';});
+    })();
+
     window.addEventListener('resize',()=>refreshEditors());
     runSketch();requestAnimationFrame(refreshEditors);
   </script>
