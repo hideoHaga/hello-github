@@ -2,60 +2,41 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>p5.js Live Editor (Final Stable Light Mode)</title>
+  <title>p5.js Live Editor (Cmd/Ctrl+Enter 専用・Light Mode)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- p5.js -->
   <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
-
-  <!-- CodeMirror (v5) Light Theme -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.css">
   <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/javascript/javascript.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/edit/closebrackets.js"></script>
-
   <style>
     :root { --leftWidth: 50vw; --topRatio: 0.5; }
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; background: #f7f7f7; color: #222; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
     .app { display: flex; width: 100%; height: 100%; overflow: hidden; }
 
-    .left {
-      width: var(--leftWidth); min-width: 240px; background: #fff;
-      border-right: 2px solid #ddd; display: flex; align-items: stretch; justify-content: center;
-    }
+    .left { width: var(--leftWidth); min-width: 240px; background: #fff; border-right: 2px solid #ddd; display: flex; align-items: stretch; justify-content: center; }
     #canvas-wrap { position: relative; flex: 1; }
     canvas { display: block; }
 
     .resizer-x { width: 6px; cursor: col-resize; background: #eee; }
-
     .right { flex: 1; min-width: 280px; display: flex; flex-direction: column; background: #fafafa; }
     .pane-title { padding: 8px 12px; font-size: 13px; color: #555; background:#f0f0f0; border-bottom:1px solid #ddd; }
 
     .editors { flex: 1; display: flex; flex-direction: column; padding: 8px; gap: 6px; overflow: hidden; }
-    .stack { position: relative; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-    .top-pane { flex: 0 0 calc(var(--topRatio) * 100% - 3px); display: flex; flex-direction: column; min-height: 80px; }
-    .row-resizer { height: 6px; background: #eee; border: 1px solid #ddd; border-left: 0; border-right: 0; cursor: row-resize; }
-    .bottom-pane { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 80px; }
+    .stack { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .top-pane { flex: 0 0 calc(var(--topRatio) * 100% - 3px); min-height: 80px; display: flex; flex-direction: column; }
+    .row-resizer { height: 6px; background: #eee; border: 1px solid #ddd; cursor: row-resize; }
+    .bottom-pane { flex: 1 1 auto; min-height: 80px; display: flex; flex-direction: column; }
 
     .editor { flex: 1; display: flex; flex-direction: column; background:#fff; border:1px solid #ccc; border-radius: 8px; overflow: hidden; }
     .editor header { font-size: 12px; padding: 6px 8px; color:#0366d6; background:#f8f8f8; border-bottom:1px solid #ddd; }
 
     .cm-host { flex: 1; }
-    .CodeMirror {
-      height: 100%;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-      font-size: 13px; line-height: 1.5;
-    }
+    .CodeMirror { height: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 13px; line-height: 1.5; }
 
-    .run-bar { padding: 10px; border-top:1px solid #ddd; display: flex; gap: 10px; align-items: center; background:#f9f9f9; }
-    button {
-      padding: 8px 14px; border-radius: 8px; border: 1px solid #ccc;
-      background: #007bff; color: #fff; font-weight: 600; cursor: pointer;
-    }
-    button:active { transform: translateY(1px); }
-    .status { font-size: 12px; color:#555; }
-    .hint { font-size: 12px; color:#888; margin-left:auto; }
-    .errors { padding: 8px 12px; color:#b00020; font-size:12px; white-space: pre-wrap; }
+    .statusbar { padding: 6px 12px; border-top:1px solid #ddd; font-size:12px; color:#555; background:#f9f9f9; }
+    .errors { padding: 6px 12px; color:#b00020; font-size:12px; white-space: pre-wrap; }
   </style>
 </head>
 <body>
@@ -64,7 +45,6 @@
     <div class="resizer-x" id="resizerX" title="ドラッグで幅を調整"></div>
     <div class="right">
       <div class="pane-title">右：コードエディタ（上＝setup() の中身／下＝draw() の中身）</div>
-
       <div class="editors">
         <div class="stack" id="stack">
           <div class="top-pane">
@@ -73,7 +53,7 @@
               <div class="cm-host"><textarea id="setup-editor"></textarea></div>
             </div>
           </div>
-          <div class="row-resizer" id="resizerY" title="ドラッグで高さを調整"></div>
+          <div class="row-resizer" id="resizerY"></div>
           <div class="bottom-pane">
             <div class="editor">
               <header>draw() の中身</header>
@@ -82,163 +62,74 @@
           </div>
         </div>
       </div>
-
-      <div class="run-bar">
-        <button id="run-btn">実行</button>
-        <div class="status" id="status">待機中</div>
-        <div class="hint">Ctrl/Cmd+Enter でも実行・自動保存あり</div>
-      </div>
+      <div class="statusbar" id="status">Cmd/Ctrl+Enter で実行します</div>
       <div class="errors" id="errors"></div>
     </div>
   </div>
 
   <script>
-    // ローカル保存キー
-    const LS = { setup:'p5live.setup', draw:'p5live.draw', leftWidth:'p5live.leftWidth', topRatio:'p5live.topRatio' };
+    const LS={setup:'p5live.setup',draw:'p5live.draw',left:'p5live.leftWidth',ratio:'p5live.topRatio'};
+    const DEFAULT_SETUP=`noStroke(); background(255);`;
+    const DEFAULT_DRAW=`background(230); fill(0,120,255,150); circle(mouseX,mouseY,80);`;
 
-    // 初期サンプル
-    const DEFAULT_SETUP =
-`// キャンバスは自動作成されます（createCanvas不要）
-// サイズは左ペイン幅 × ウィンドウ高に自動追従します。
-noStroke();
-background(255);`;
+    const cmSetup=CodeMirror.fromTextArea(document.getElementById('setup-editor'),{mode:"javascript",lineNumbers:true,lineWrapping:true,autoCloseBrackets:true});
+    const cmDraw =CodeMirror.fromTextArea(document.getElementById('draw-editor'),{mode:"javascript",lineNumbers:true,lineWrapping:true,autoCloseBrackets:true});
+    cmSetup.setValue(localStorage.getItem(LS.setup)??DEFAULT_SETUP);
+    cmDraw.setValue(localStorage.getItem(LS.draw)??DEFAULT_DRAW);
 
-    const DEFAULT_DRAW =
-`background(240);
-fill(30, 144, 255, 180);
-circle(mouseX, mouseY, 80);
-fill(40); textSize(14);
-text('左右・上下の仕切りはドラッグで調整／編集後は「実行」', 12, 22);`;
+    const debounce=(fn,ms)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms);};};
+    cmSetup.on('change',debounce(()=>localStorage.setItem(LS.setup,cmSetup.getValue()),300));
+    cmDraw.on('change',debounce(()=>localStorage.setItem(LS.draw,cmDraw.getValue()),300));
 
-    // CodeMirror初期化
-    const cmSetup = CodeMirror.fromTextArea(document.getElementById('setup-editor'), {
-      mode:"javascript", lineNumbers:true, lineWrapping:true, autoCloseBrackets:true
-    });
-    const cmDraw = CodeMirror.fromTextArea(document.getElementById('draw-editor'), {
-      mode:"javascript", lineNumbers:true, lineWrapping:true, autoCloseBrackets:true
-    });
-
-    cmSetup.setValue(localStorage.getItem(LS.setup) ?? DEFAULT_SETUP);
-    cmDraw.setValue(localStorage.getItem(LS.draw) ?? DEFAULT_DRAW);
-
-    const savedLeft = localStorage.getItem(LS.leftWidth);
-    if(savedLeft) document.documentElement.style.setProperty('--leftWidth', savedLeft);
-    const savedTop = localStorage.getItem(LS.topRatio);
-    if(savedTop) document.documentElement.style.setProperty('--topRatio', savedTop);
-
-    const debounce = (fn, ms)=>{ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; };
-    cmSetup.on('change', debounce(()=>localStorage.setItem(LS.setup, cmSetup.getValue()),300));
-    cmDraw.on('change', debounce(()=>localStorage.setItem(LS.draw, cmDraw.getValue()),300));
-
-    [cmSetup, cmDraw].forEach(cm=>{
-      cm.addKeyMap({ 'Cmd-Enter': runSketch, 'Ctrl-Enter': runSketch });
-    });
-
-    // 左右分割バー
-    (function(){
-      const bar=document.getElementById('resizerX'); let drag=false;
-      bar.addEventListener('mousedown',e=>{drag=true;document.body.style.cursor='col-resize';e.preventDefault();});
-      window.addEventListener('mousemove',e=>{
-        if(!drag)return;
-        const w=Math.min(Math.max(e.clientX,200),window.innerWidth-286);
-        document.documentElement.style.setProperty('--leftWidth',w+'px');
-        localStorage.setItem(LS.leftWidth,w+'px');
-        hostResizeCanvasToLeftPane(); refreshEditors();
-      });
-      window.addEventListener('mouseup',()=>{drag=false;document.body.style.cursor='default';});
-    })();
-
-    // 上下分割バー
-    (function(){
-      const bar=document.getElementById('resizerY'); let drag=false,startY=0,startRatio=0;
-      bar.addEventListener('mousedown',e=>{
-        drag=true;startY=e.clientY;
-        const s=document.getElementById('stack').getBoundingClientRect();
-        const t=document.querySelector('.top-pane').getBoundingClientRect().height;
-        startRatio=t/s.height;document.body.style.cursor='row-resize';e.preventDefault();
-      });
-      window.addEventListener('mousemove',e=>{
-        if(!drag)return;
-        const s=document.getElementById('stack').getBoundingClientRect();
-        let r=startRatio+(e.clientY-startY)/s.height;r=Math.min(Math.max(r,0.15),0.85);
-        document.documentElement.style.setProperty('--topRatio',r.toString());
-        localStorage.setItem(LS.topRatio,r.toString());
-        refreshEditors();
-      });
-      window.addEventListener('mouseup',()=>{drag=false;document.body.style.cursor='default';});
-    })();
+    [cmSetup,cmDraw].forEach(cm=>cm.addKeyMap({'Cmd-Enter':runSketch,'Ctrl-Enter':runSketch}));
 
     let currentP5=null;
-
     function runSketch(){
-      // ★ 最新CodeMirror内容を確実に取得
-      cmSetup.save(); cmDraw.save();
-      cmSetup.refresh(); cmDraw.refresh();
-
-      const setupBody=cmSetup.getValue();
-      const drawBody=cmDraw.getValue();
-      clearErrors();
-
-      if(currentP5){ try{currentP5.remove();}catch(_){} currentP5=null; }
+      cmSetup.save(); cmDraw.save(); cmSetup.refresh(); cmDraw.refresh();
+      const sBody=cmSetup.getValue(); const dBody=cmDraw.getValue(); clearErrors();
+      if(currentP5){try{currentP5.remove();}catch(_){} currentP5=null;}
       document.getElementById('canvas-wrap').innerHTML='';
-
-      const userSetup=new Function('p',`with(p){${setupBody}}`);
-      const userDraw =new Function('p',`with(p){${drawBody}}`);
-
+      const userS=new Function('p',`with(p){${sBody}}`);
+      const userD=new Function('p',`with(p){${dBody}}`);
       const sketch=(p)=>{
-        function ensureCanvas(){
-          const left=document.getElementById('left');
-          const w=Math.max(200,left.clientWidth);
-          const h=window.innerHeight;
-          if(!p._renderer){ p.createCanvas(w,h); }
-          else{ p.resizeCanvas(w,h); }
-          if(p.canvas && p.canvas.parentElement?.id!=='canvas-wrap'){
-            document.getElementById('canvas-wrap').appendChild(p.canvas);
-          }
-        }
-        function patchCreateCanvas(){
-          const orig=p.createCanvas.bind(p);
-          p.createCanvas=function(w,h,...r){
-            if(p._renderer){ p.resizeCanvas(w,h); return p._renderer; }
-            const res=orig(w,h,...r);
-            if(p.canvas && p.canvas.parentElement?.id!=='canvas-wrap'){
-              document.getElementById('canvas-wrap').appendChild(p.canvas);
-            }
-            return res;
-          };
-        }
-        p.setup=()=>{ try{ensureCanvas();patchCreateCanvas();userSetup(p);}catch(e){reportError('setup',e);p.noLoop();}};
-        p.draw =()=>{ try{userDraw(p);}catch(e){reportError('draw',e);p.noLoop();}};
-        p.windowResized=()=>{ try{
-          const left=document.getElementById('left');
-          p.resizeCanvas(Math.max(200,left.clientWidth),window.innerHeight);
-        }catch(e){}};
+        const ensure=()=>{const w=Math.max(200,document.getElementById('left').clientWidth),h=window.innerHeight;
+          if(!p._renderer)p.createCanvas(w,h);else p.resizeCanvas(w,h);
+          if(p.canvas.parentElement?.id!=='canvas-wrap')document.getElementById('canvas-wrap').appendChild(p.canvas);
+        };
+        p.setup=()=>{try{ensure();userS(p);}catch(e){err('setup',e);p.noLoop();}};
+        p.draw =()=>{try{userD(p);}catch(e){err('draw',e);p.noLoop();}};
+        p.windowResized=()=>{try{p.resizeCanvas(Math.max(200,document.getElementById('left').clientWidth),window.innerHeight);}catch(e){}};
       };
       currentP5=new p5(sketch,document.getElementById('canvas-wrap'));
-      setStatus('実行しました');
+      setStatus('実行しました（Cmd/Ctrl+Enter）');
     }
 
-    function setStatus(msg){ document.getElementById('status').textContent=msg; }
-    function clearErrors(){ document.getElementById('errors').textContent=''; }
-    function reportError(phase,err){
-      const box=document.getElementById('errors');
-      box.textContent=`⚠️ ${phase} エラー: ${err?.message||err}`;
-      console.error(`[${phase}]`,err);
-      setStatus(`${phase} でエラー`);
-    }
+    function setStatus(msg){document.getElementById('status').textContent=msg;}
+    function err(phase,e){document.getElementById('errors').textContent=`⚠️ ${phase} エラー: ${e.message||e}`;}
+    function clearErrors(){document.getElementById('errors').textContent='';}
 
-    function hostResizeCanvasToLeftPane(){
-      if(!currentP5)return;
-      try{
-        const left=document.getElementById('left');
-        currentP5.resizeCanvas(Math.max(200,left.clientWidth),window.innerHeight);
-      }catch(e){}
-    }
-    function refreshEditors(){ cmSetup.refresh(); cmDraw.refresh(); }
-    window.addEventListener('resize',()=>{hostResizeCanvasToLeftPane();refreshEditors();});
+    // 左右バー
+    (function(){const bar=document.getElementById('resizerX');let drag=false;
+      bar.addEventListener('mousedown',e=>{drag=true;document.body.style.cursor='col-resize';e.preventDefault();});
+      window.addEventListener('mousemove',e=>{if(!drag)return;const w=Math.min(Math.max(e.clientX,200),window.innerWidth-286);
+        document.documentElement.style.setProperty('--leftWidth',w+'px');localStorage.setItem(LS.left,w+'px');resizeCanvas();refreshEditors();});
+      window.addEventListener('mouseup',()=>{drag=false;document.body.style.cursor='default';});
+    })();
 
-    document.getElementById('run-btn').addEventListener('click',runSketch);
+    // 上下バー
+    (function(){const bar=document.getElementById('resizerY');let drag=false,y0=0,r0=0;
+      bar.addEventListener('mousedown',e=>{drag=true;y0=e.clientY;
+        const s=document.getElementById('stack').getBoundingClientRect();const t=document.querySelector('.top-pane').getBoundingClientRect().height;
+        r0=t/s.height;document.body.style.cursor='row-resize';e.preventDefault();});
+      window.addEventListener('mousemove',e=>{if(!drag)return;const s=document.getElementById('stack').getBoundingClientRect();
+        let r=r0+(e.clientY-y0)/s.height;r=Math.min(Math.max(r,0.15),0.85);
+        document.documentElement.style.setProperty('--topRatio',r.toString());localStorage.setItem(LS.ratio,r.toString());refreshEditors();});
+      window.addEventListener('mouseup',()=>{drag=false;document.body.style.cursor='default';});
+    })();
 
+    function resizeCanvas(){if(!currentP5)return;try{currentP5.resizeCanvas(Math.max(200,document.getElementById('left').clientWidth),window.innerHeight);}catch(e){}}
+    function refreshEditors(){cmSetup.refresh();cmDraw.refresh();}
+    window.addEventListener('resize',()=>{resizeCanvas();refreshEditors();});
     runSketch();
     requestAnimationFrame(refreshEditors);
   </script>
