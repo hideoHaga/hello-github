@@ -1,11 +1,31 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
-</head>
-<body>
-    こんにちは！
-</body>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <title>p5.js 図形描画サンプル</title>
+    <!-- p5.js をCDNから読み込み -->
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+  </head>
+  <body>
+    <script>
+      // キャンバスを作成
+      function setup() {
+        createCanvas(400, 300); // 幅400px, 高さ300px
+        background(240);        // 背景を薄いグレーに
+      }
+
+      // 描画処理
+      function draw() {
+        // 円を描画
+        fill(0, 150, 255);     // 塗りつぶし色（青系）
+        stroke(0);             // 枠線の色（黒）
+        ellipse(200, 150, 100, 100); // (x, y, 幅, 高さ)
+
+        // 長方形を描画
+        fill(255, 100, 100);   // 塗りつぶし色（赤系）
+        stroke(0);
+        rect(50, 50, 80, 60);  // (x, y, 幅, 高さ)
+      }
+    </script>
+  </body>
 </html>
