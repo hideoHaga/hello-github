@@ -29,4 +29,172 @@
     .pane-title { padding: 8px 12px; font-size: 12px; color: #bbb; background:#151515; border-bottom:1px solid #242424; }
     .editors { flex: 1; display: flex; flex-direction: column; gap: 6px; padding: 8px; overflow: hidden; }
     .editor {
-      flex: 1; display: flex; flex-direction: column; backgr
+      flex: 1; display: flex; flex-direction: column; background:#0f0f0f; border:1px solid #2a2a2a; border-radius: 10px; overflow: hidden;
+    }
+    .editor header { font-size: 12px; padding: 6px 8px; color:#9ad; background:#0a0a0a; border-bottom:1px solid #222; }
+    textarea {
+      flex: 1; width: 100%; padding: 10px; resize: none; border: 0; outline: none;
+      background: #0f0f0f; color: #e6e6e6; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 13px; line-height: 1.5; tab-size: 2;
+    }
+    .run-bar {
+      padding: 10px; border-top:1px solid #242424; display: flex; gap: 10px; align-items: center; background:#151515;
+    }
+    button {
+      padding: 10px 14px; border-radius: 10px; border: 1px solid #2a2a2a;
+      background: #2b6cf6; color: #fff; font-weight: 600; cursor: pointer;
+    }
+    button:active { transform: translateY(1px); }
+    .status { font-size: 12px; color:#bbb; }
+    .hint { font-size: 12px; color:#888; margin-left:auto; }
+    /* p5 canvas full fit */
+    .canvas-wrap canvas { display: block; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="left" id="left">
+      <div class="canvas-wrap" id="canvas-wrap"></div>
+    </div>
+    <div class="resizer" id="resizer" title="ドラッグで幅を調整"></div>
+    <div class="right">
+      <div class="pane-title">右：コードエディタ（上＝setup() の中身／下＝draw() の中身）</div>
+      <div class="editors">
+        <div class="editor">
+          <header>setup() の中身</header>
+          <textarea id="setup-editor" spellcheck="false">
+// キャンバス作成と初期化
+createCanvas(Math.max(200, document.getElementById('left').clientWidth), window.innerHeight);
+noStroke();
+background(240);
+          </textarea>
+        </div>
+        <div class="editor">
+          <header>draw() の中身</header>
+          <textarea id="draw-editor" spellcheck="false">
+// 毎フレーム描画（例：マウス追従の円）
+background(240);
+fill(30, 144, 255, 180);
+circle(mouseX, mouseY, 80);
+
+// 左上にガイド
+fill(20);
+textSize(14);
+text('move divider and click "実行" after edits', 12, 22);
+          </textarea>
+        </div>
+      </div>
+      <div class="run-bar">
+        <button id="run-btn">実行</button>
+        <div class="status" id="status">待機中</div>
+        <div class="hint">ヒント: 右エディタを書き換えて「実行」を押すと左に反映</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // -----------------------------
+    // 左右ドラッグでリサイズ
+    // -----------------------------
+    (function setupResizer(){
+      const resizer = document.getElementById('resizer');
+      const left = document.getElementById('left');
+      let dragging = false;
+
+      resizer.addEventListener('mousedown', (e) => {
+        dragging = true; document.body.style.cursor = 'col-resize';
+        e.preventDefault();
+      });
+      window.addEventListener('mousemove', (e) => {
+        if(!dragging) return;
+        const maxW = window.innerWidth;
+        const minLeft = 200;                   // 左パネル最小幅
+        const maxLeft = maxW - 280 - 6;       // 右パネル最小幅(≈280)＋リサイザ幅
+        let newW = Math.min(Math.max(e.clientX, minLeft), maxLeft);
+        document.documentElement.style.setProperty('--leftWidth', newW + 'px');
+        // キャンバスのサイズも追従
+        resizeCanvasToLeftPane();
+      });
+      window.addEventListener('mouseup', () => {
+        dragging = false; document.body.style.cursor = 'default';
+      });
+    })();
+
+    // -----------------------------
+    // p5 スケッチを生成・再実行
+    // -----------------------------
+    let currentP5 = null;
+
+    function buildSketch(setupBody, drawBody){
+      return function(p){
+        // ユーザーの“中身だけ”を instance mode で呼べるように with(p){...} でラップ
+        p.setup = function(){
+          try {
+            with(p){ (new Function(setupBody))(); }
+          } catch(err){
+            reportError('setup', err);
+          }
+        };
+        p.draw = function(){
+          try {
+            with(p){ (new Function(drawBody))(); }
+          } catch(err){
+            reportError('draw', err);
+            // 連続でエラーし続けるのを避けるため noLoop
+            p.noLoop();
+          }
+        };
+      };
+    }
+
+    function runSketch(){
+      const setupBody = document.getElementById('setup-editor').value;
+      const drawBody  = document.getElementById('draw-editor').value;
+
+      // 既存スケッチを破棄
+      if(currentP5){
+        try { currentP5.remove(); } catch(_) {}
+        currentP5 = null;
+      }
+      // コンテナをクリア
+      const wrap = document.getElementById('canvas-wrap');
+      wrap.innerHTML = '';
+
+      // 新しいスケッチを作成（左パネル内に配置）
+      const sketch = buildSketch(setupBody, drawBody);
+      currentP5 = new p5(sketch, wrap);
+
+      setStatus('実行しました');
+    }
+
+    function reportError(phase, err){
+      console.error(`[${phase}]`, err);
+      setStatus(`⚠️ ${phase} エラー: ${err.message || err}`);
+    }
+
+    function setStatus(text){
+      document.getElementById('status').textContent = text;
+    }
+
+    // 実行ボタン
+    document.getElementById('run-btn').addEventListener('click', runSketch);
+
+    // 左パネル幅・ウィンドウ高さに合わせてキャンバスをリサイズ
+    function resizeCanvasToLeftPane(){
+      if(!currentP5) return;
+      const left = document.getElementById('left');
+      const w = Math.max(200, left.clientWidth);
+      const h = window.innerHeight;
+      try { currentP5.resizeCanvas(w, h); } catch(_) {}
+    }
+    window.addEventListener('resize', resizeCanvasToLeftPane);
+
+    // 左パネルサイズの変化を監視してキャンバス追従
+    const ro = new ResizeObserver(() => resizeCanvasToLeftPane());
+    ro.observe(document.getElementById('left'));
+
+    // 初回実行
+    runSketch();
+  </script>
+</body>
+</html>
